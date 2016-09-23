@@ -116,6 +116,7 @@ class DispTerm:
         "EVT" : "_" * WIDTH     +  "\| " + " " * WIDTH,  # 8 ASYNC:  "__\|   "
         "CR8" : "-" * (WIDTH-1) + ">[C]" + " " * WIDTH,  # 9 CREATE: "->[C]  "
         "DES" : " " * WIDTH     +  " X " + " " * WIDTH,  # A DESTROY:"   X   "
+        "VAL" : " " * WIDTH     +  " +-" + "-" * WIDTH,  # B VALUE:  "   $  "
     }
 
     def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None):
@@ -274,14 +275,22 @@ class DispTerm:
                 line += color[1]
             else:
                 line += DispTerm.TILES["CEN"]
-        self.stdout.write(line + " X %s%s%s\n" % (color[0], self.objList[objId], color[1]))
+        self.stdout.write(line + " Destroy %s%s%s\n" % (color[0], self.objList[objId], color[1]))
 
-    def TestPt(self, objId, msgStr, color=MSC_COLOR_NONE):
+    def TestPt(self, objId, value, color=MSC_COLOR_NONE):
         # Step 1: Print optional prefix
         line = self._GetPrefix()
-        # Step 2: Build the test point symbols
-        #TODO: Add testpoint generation
-        self.stdout.write(line + " : %s%s%s\n" % (color[0], msgStr, color[1]))
+        # Step 2: Fill start with life lines
+        line += DispTerm.TILES["CEN"] * objId
+        # Step 3: Build the value note
+        # Add color start
+        line += color[0]
+        line += DispTerm.TILES["VAL"]
+        # Add lines to the note
+        line += DispTerm.TILES["THR"] * (self.objCnt - 1 - objId)
+        # Add color end
+        line += color[1]
+        self.stdout.write(line + "-[ %s0x%x%s ]\n" % (color[0], value, color[1]))
 
 
 class MSC(object):
@@ -292,7 +301,7 @@ class MSC(object):
     The MSC format is as follows:
     typedef struct
     {
-        uint8_t ucOpc : 5;      // Message Code (MSG:0, EVT:1, STA:2, TP:3, ACK:4)
+        uint8_t ucOpc : 5;      // Message Code (MSG:0, EVT:1, STA:2, TP:3, DES:4 ACK:5)
         uint8_t ucPri : 3;      // Priority (0x01 - Start of Sequence, 0x02 - Sequential, 0x04 - Alert)
         uint8_t ucLen;          // Length of message
     } MSC_HDR_t;
@@ -328,8 +337,15 @@ class MSC(object):
         MSC_HDR_t xHdr;
         uint8_t ucMod;          // Module
         uint8_t ucId;           // ID of Module Instance
-        uint8_t aucData[0];     // TestPoint Data
+        uint32_t ulData;        // TestPoint Data
     } MSC_TP_t;
+
+    typedef struct
+    {
+        MSC_HDR_t xHdr;
+        uint8_t ucMod;          // Module
+        uint8_t ucId;           // ID of Module Instance
+    } MSC_DES_t;
 
     typedef struct
     {
@@ -346,7 +362,8 @@ class MSC(object):
     HDR_TYPE_EVT = 1
     HDR_TYPE_STA = 2
     HDR_TYPE_TP  = 3
-    HDR_TYPE_ACK = 4
+    HDR_TYPE_DES = 4
+    HDR_TYPE_ACK = 5
 
     HDR_PRI_SOS = 1
     HDR_PRI_SEQ = 2
@@ -365,6 +382,7 @@ class MSC(object):
         self.modDict = {}
         self.objDict = {}
         self.objList = []
+        self.filterList = []
 
     def RegisterMsg(self, usMsgId, strMsg):
         ''' Register the msgId with message string '''
@@ -376,13 +394,12 @@ class MSC(object):
         # Limit max length of string for formating
         self.modDict[ucModId] = strMod[0:MAX_NAME_LEN]
 
-    def AddFilter(self, key):
-        #TODO: Add filter to Parse
-        pass
+    def AddFilter(self, ucFilterType, ucPri, ucOpc, msgId, srcMod, srcId):
+        filterObj = (ucFilterType, ucPri, ucOpc, msgId, srcMod, srcId)
+        self.filterList += filterObj
 
-    def DelFilter(self, key):
-        #TODO: Add filter to Parse
-        pass
+    def DelFilter(self, FilterId=None):
+        self.filterList = FilterId
 
     def BuildPkt(self, ucPri, ucOpc, msgId, srcMod, srcId, dstMod=0, dstId=0):
         '''
@@ -395,17 +412,19 @@ class MSC(object):
             body = struct.pack("<BBBBH", srcMod, srcId, dstMod, dstId, msgId)
         elif ucOpc == MSC.HDR_TYPE_EVT:
             body = struct.pack("<BBH", srcMod, srcId, msgId)
-        elif ucOpc == MSC.HDR_TYPE_TP:
-            body = struct.pack("<BB", srcMod, srcId)
         elif ucOpc == MSC.HDR_TYPE_STA:
-            body = struct.pack("<BBH", srcMod, srcId,msgId)
+            body = struct.pack("<BBH", srcMod, srcId, msgId)
+        elif ucOpc == MSC.HDR_TYPE_TP:
+            body = struct.pack("<BBL", srcMod, srcId, msgId)
+        elif ucOpc == MSC.HDR_TYPE_DES:
+            body = struct.pack("<BB", srcMod, srcId)
         # Step 3: Build Packet
         pkt = chr(hdr) + chr(len(body)) + body
         # print binascii.hexlify(pkt)
         return pkt
 
     def AddObj(self, keyList):
-        ''' Adds object(s) to MSC
+        ''' Adds object(s) to MSC and assign it a position
         '''
         isChanged = False
         for key in keyList:
@@ -426,7 +445,7 @@ class MSC(object):
         ''' Removes the object from MSC
         '''
         if key in self.objDict:
-            self.objDict[key]
+            self.objDict.pop(key, None)
             self.objList.remove(key)
             # Refresh dictionary
             for idx, key in enumerate(self.objList):
@@ -440,9 +459,11 @@ class MSC(object):
     def Parse(self, pkt):
         ''' Parses the incoming MSC protocol packet then displays
         '''
+        hdr = ord(pkt[0])
+        #ucLen = ord(pkt[1])
         #TODO: Add Packet Filter Here
         # Set color highlight
-        ucPri = (ord(pkt[0]) >> MSC.HDR_PRI_SHF) & MSC.HDR_PRI_MSK
+        ucPri = (hdr >> MSC.HDR_PRI_SHF) & MSC.HDR_PRI_MSK
         if ucPri == MSC.HDR_PRI_SOS:
             color = MSC_COLOR_CYN
         elif ucPri == MSC.HDR_PRI_SEQ:
@@ -452,8 +473,9 @@ class MSC(object):
         else:
             color = MSC_COLOR_NONE
         # Print the packet type
-        ucOpc = ord(pkt[0]) & MSC.HDR_OPC_MSK
+        ucOpc = hdr & MSC.HDR_OPC_MSK
         if ucOpc == MSC.HDR_TYPE_MSG:
+            # [HDR(2)][SrcMod][SrcId][DstMod][DstId][Message(2)]
             # Check if object needs to be added
             src = (pkt[2] ,pkt[3])
             dst = (pkt[4] ,pkt[5])
@@ -461,25 +483,46 @@ class MSC(object):
             # Display Banner (if required)
             self.disp.Banner()
             # Display Message
-            self.disp.Message(self.objDict[src], self.objDict[dst], self.msgDict[2], color)
+            msg = struct.unpack("<H", pkt[6:])[0]
+            self.disp.Message(self.objDict[src], self.objDict[dst], self.msgDict[msg], color)
         elif ucOpc == MSC.HDR_TYPE_EVT:
+            # [HDR(2)][ModId][ObjId][Message(2)]
             # Check if object needs to be added
             src = (pkt[2] ,pkt[3])
             self.AddObj([src])
             # Display Banner (if required)
             self.disp.Banner()
             # Display Event
-            self.disp.Event(self.objDict[src], self.msgDict[2], color)
+            msg = struct.unpack("<H", pkt[4:])[0]
+            self.disp.Event(self.objDict[src], self.msgDict[msg], color)
         elif ucOpc == MSC.HDR_TYPE_STA:
+            # [HDR(2)][ModId][ObjId][State(2)]
             # Check if object needs to be added
             src = (pkt[2] ,pkt[3])
             self.AddObj([src])
             # Display Banner (if required)
             self.disp.Banner()
             # Display State
-            self.disp.State(self.objDict[src], self.msgDict[2], color)
+            msg = struct.unpack("<H", pkt[4:])[0]
+            self.disp.State(self.objDict[src], self.msgDict[msg], color)
         elif ucOpc == MSC.HDR_TYPE_TP:
-            self.disp.TestPt(pkt[2], pkt[3], 0, color)
+            # [HDR(2)][ModId][ObjId][Value(4)]
+            src = (pkt[2] ,pkt[3])
+            if src in self.objDict:
+                value = struct.unpack("<L", pkt[4:])[0]
+                self.disp.TestPt(self.objDict[src], value, color)
+            else:
+                print "unknown src:", src
+        elif ucOpc == MSC.HDR_TYPE_DES:
+            # [HDR(2)][ModId][ObjId]
+            src = (pkt[2] ,pkt[3])
+            if src in self.objDict:
+                self.disp.Destroy(self.objDict[src], color)
+                self.DelObj(src)
+                # Display Banner (if required)
+                self.disp.Banner()
+            else:
+                print "unknown src:", src
 
 
 import datetime
@@ -498,12 +541,15 @@ def main():
     msc = MSC(DispTerm())
     pkts = []
     pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_MSG, 0, 2, 8, 1, 10))
+    pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_MSG, 0, 1, 10, 2, 8))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_SOS, MSC.HDR_TYPE_MSG, 1, 2, 9, 1, 11))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_SEQ, MSC.HDR_TYPE_MSG, 2, 2, 9, 2, 9))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_SEQ, MSC.HDR_TYPE_MSG, 3, 1, 11, 2, 8))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_SEQ, MSC.HDR_TYPE_MSG, 4, 1, 10, 2, 9))
     pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_MSG, 0, 2, 8, 1, 10))
     pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_STA, 1, 1, 10))
+    pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_TP,  0x12345678, 1, 10))
+    pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_DES, 0, 1, 10))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_ALT, MSC.HDR_TYPE_EVT, 2, 1, 11))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_ALT, MSC.HDR_TYPE_EVT, 3, 2, 8))
     for pkt in pkts:
@@ -527,6 +573,7 @@ def main():
         disp.State(1, "StateA", MSC_COLOR_MAG)
         disp.State(3, "StateB", MSC_COLOR_YEL)
         disp.State(2, "StateC")
+        disp.TestPt(2, 0x12345678)
         disp.Create(2, 3, "New Obj")
         disp.Destroy(1, MSC_COLOR_RED)
         print "----Display Test [End]----\n"
