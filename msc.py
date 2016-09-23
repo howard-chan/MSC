@@ -1,4 +1,4 @@
-#!/usr/python
+#!/usr/bin/python
 """
 The MIT License (MIT)
 
@@ -78,7 +78,7 @@ class DispWeb:
     def Event(self, objId, msgStr, color=MSC_COLOR_NONE):
         ''' Displays a asynchronous event to an object's life line
         '''
-        self.stdout.write('-->"%s":%s\n' % (self.objList[objId], msgStr))
+        self.stdout.write('[-->"%s":%s\n' % (self.objList[objId], msgStr))
 
     def State(self, objId, stateStr, color=MSC_COLOR_NONE):
         ''' Displays a state change in an object's life line
@@ -96,7 +96,7 @@ class DispWeb:
         self.stdout.write('destroy "%s"\n' % self.objList[objId])
 
     def TestPt(self, objId, msgStr, color=MSC_COLOR_NONE):
-        self.stdout.write('note right of "%s":%s\n' % (self.objList[objId], msgStr))
+        self.stdout.write('note over "%s":%s\n' % (self.objList[objId], msgStr))
 
 
 class DispTerm:
