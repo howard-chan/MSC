@@ -306,52 +306,56 @@ class MSC(object):
         uint8_t ucLen;          // Length of message
     } MSC_HDR_t;
 
+    // Helper structure
+    typedef union
+    {
+        struct
+        {
+            uint8_t ucMod;      // Module
+            uint8_t ucId;       // ID of Module Instance
+        };
+        uint16_t usValue;       // Object Id
+    } MSC_OBJ_t;
+
     typedef struct
     {
         MSC_HDR_t xHdr;
-        uint8_t ucSrcMod;       // Source Module
-        uint8_t ucSrcId;        // Source ID of Module Instance
-        uint8_t ucDstMod;       // Destination Module
-        uint8_t ucDstId;        // Destination ID of Module Instance
+        MSC_OBJ_t xSrc;         // Source Object
+        MSC_OBJ_t xDst;         // Destination Object
         uint16_t usMsgId;       // Message ID
     } MSC_MSG_t;
 
     typedef struct
     {
         MSC_HDR_t xHdr;
-        uint8_t ucMod;          // Module
-        uint8_t ucId;           // ID of Module Instance
+        MSC_OBJ_t xObj;         // Object
         uint16_t usEvtId;       // Event Id
     } MSC_EVT_t;
 
     typedef struct
     {
         MSC_HDR_t xHdr;
-        uint8_t ucMod;          // Module
-        uint8_t ucId;           // ID of Module Instance
+        MSC_OBJ_t xObj;         // Object
         uint16_t usState;       // State Id
     } MSC_STA_t;
 
     typedef struct
     {
         MSC_HDR_t xHdr;
-        uint8_t ucMod;          // Module
-        uint8_t ucId;           // ID of Module Instance
+        MSC_OBJ_t xObj;         // Object
         uint32_t ulData;        // TestPoint Data
     } MSC_TP_t;
 
     typedef struct
     {
         MSC_HDR_t xHdr;
-        uint8_t ucMod;          // Module
-        uint8_t ucId;           // ID of Module Instance
+        MSC_OBJ_t xObj;         // Object
     } MSC_DES_t;
 
     typedef struct
     {
         MSC_HDR_t xHdr;
-        uint8_t ucMod;          // Module
-        uint8_t ucId;           // ID of Module Instance
+        MSC_OBJ_t xObj;         // Object
         uint16_t usMsgId;       // Message ID
     } MSC_ACK_t;
 
@@ -375,6 +379,8 @@ class MSC(object):
     HDR_PRI_SHF = HDR_OPC_LEN
     HDR_PRI_LEN = 3
     HDR_PRI_MSK = (1 << HDR_PRI_LEN) - 1
+
+    DEFAULT_MESSAGE = "Unknown Message(0x%04x)"
 
     def __init__(self, disp):
         self.disp = disp
@@ -484,7 +490,7 @@ class MSC(object):
             self.disp.Banner()
             # Display Message
             msg = struct.unpack("<H", pkt[6:])[0]
-            self.disp.Message(self.objDict[src], self.objDict[dst], self.msgDict[msg], color)
+            self.disp.Message(self.objDict[src], self.objDict[dst], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_EVT:
             # [HDR(2)][ModId][ObjId][Message(2)]
             # Check if object needs to be added
@@ -494,7 +500,7 @@ class MSC(object):
             self.disp.Banner()
             # Display Event
             msg = struct.unpack("<H", pkt[4:])[0]
-            self.disp.Event(self.objDict[src], self.msgDict[msg], color)
+            self.disp.Event(self.objDict[src], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_STA:
             # [HDR(2)][ModId][ObjId][State(2)]
             # Check if object needs to be added
@@ -504,7 +510,7 @@ class MSC(object):
             self.disp.Banner()
             # Display State
             msg = struct.unpack("<H", pkt[4:])[0]
-            self.disp.State(self.objDict[src], self.msgDict[msg], color)
+            self.disp.State(self.objDict[src], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_TP:
             # [HDR(2)][ModId][ObjId][Value(4)]
             src = (pkt[2] ,pkt[3])
@@ -552,6 +558,7 @@ def main():
     pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_DES, 0, 1, 10))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_ALT, MSC.HDR_TYPE_EVT, 2, 1, 11))
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_ALT, MSC.HDR_TYPE_EVT, 3, 2, 8))
+    pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_EVT, 0xDEAD, 2, 8))
     for pkt in pkts:
         print binascii.hexlify(pkt)
 
