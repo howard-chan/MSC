@@ -60,8 +60,8 @@ typedef union
 {
     struct
     {
-        uint8_t ucMod;      // Module
         uint8_t ucId;       // ID of Module Instance
+        uint8_t ucMod;      // Module
     };
     uint16_t usValue;       // Object Id
 } MSC_OBJ_t;

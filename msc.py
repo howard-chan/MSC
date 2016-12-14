@@ -33,7 +33,7 @@ import sys
 # Configurable Parameters
 MAX_NAME_LEN = 10
 MIN_SPACING = 2
-LINES_PER_PAGE = 5
+LINES_PER_PAGE = 10
 LEADIN = 4
 WIDTH  = 6
 
@@ -311,8 +311,8 @@ class MSC(object):
     {
         struct
         {
-            uint8_t ucMod;      // Module
             uint8_t ucId;       // ID of Module Instance
+            uint8_t ucMod;      // Module
         };
         uint16_t usValue;       // Object Id
     } MSC_OBJ_t;
@@ -359,8 +359,8 @@ class MSC(object):
         uint16_t usMsgId;       // Message ID
     } MSC_ACK_t;
 
-    [FlagsType=MSG(0)][Tag][SrcMod][SrcId][DstMod][DstId][Message]
-    [Type=ACK(1)][Tag][SrcMod][SrcId][DstMod][DstId][Message]
+    [FlagsType=MSG(0)][Tag][SrcObj(2)][DstObj(2)][Message(2)]
+    [Type=ACK(1)][Tag][SrcObj(2)][DstObj(2)][Message(2)]
     '''
     HDR_TYPE_MSG = 0
     HDR_TYPE_EVT = 1
@@ -415,15 +415,15 @@ class MSC(object):
         hdr = (MSC.HDR_OPC_MSK & ucOpc) << MSC.HDR_OPC_SHF | (MSC.HDR_PRI_MSK & ucPri) << MSC.HDR_PRI_SHF
         # Step 2: Format the body
         if ucOpc == MSC.HDR_TYPE_MSG:
-            body = struct.pack("<BBBBH", srcMod, srcId, dstMod, dstId, msgId)
+            body = struct.pack("<BBBBH", srcId, srcMod, dstId, dstMod, msgId)
         elif ucOpc == MSC.HDR_TYPE_EVT:
-            body = struct.pack("<BBH", srcMod, srcId, msgId)
+            body = struct.pack("<BBH", srcId, srcMod, msgId)
         elif ucOpc == MSC.HDR_TYPE_STA:
-            body = struct.pack("<BBH", srcMod, srcId, msgId)
+            body = struct.pack("<BBH", srcId, srcMod, msgId)
         elif ucOpc == MSC.HDR_TYPE_TP:
-            body = struct.pack("<BBL", srcMod, srcId, msgId)
+            body = struct.pack("<BBL", srcId, srcMod, msgId)
         elif ucOpc == MSC.HDR_TYPE_DES:
-            body = struct.pack("<BB", srcMod, srcId)
+            body = struct.pack("<BB", srcId, srcMod)
         # Step 3: Build Packet
         pkt = chr(hdr) + chr(len(body)) + body
         # print binascii.hexlify(pkt)
@@ -442,7 +442,7 @@ class MSC(object):
         if isChanged:
             objList = []
             for key in self.objList:
-               objList.append("%x:%s" % (ord(key[1]), self.modDict[ord(key[0])]))
+               objList.append("%x:%s" % (ord(key[0]), self.modDict[ord(key[1])]))
             # Set display's object list
             self.disp.SetObjList(objList)
         return isChanged
@@ -459,7 +459,7 @@ class MSC(object):
             # Set display's object list
             objList = []
             for key in self.objList:
-               objList.append("%x:%s" % (ord(key[1]), self.modDict[ord(key[0])]))
+               objList.append("%x:%s" % (ord(key[0]), self.modDict[ord(key[1])]))
             self.disp.SetObjList(objList)
 
     def Parse(self, pkt):
@@ -481,10 +481,10 @@ class MSC(object):
         # Print the packet type
         ucOpc = hdr & MSC.HDR_OPC_MSK
         if ucOpc == MSC.HDR_TYPE_MSG:
-            # [HDR(2)][SrcMod][SrcId][DstMod][DstId][Message(2)]
+            # [HDR(2)][SrcObj(2)][DstObj(2)][Message(2)]
             # Check if object needs to be added
-            src = (pkt[2] ,pkt[3])
-            dst = (pkt[4] ,pkt[5])
+            src = pkt[2:4]
+            dst = pkt[4:6]
             self.AddObj([src, dst])
             # Display Banner (if required)
             self.disp.Banner()
@@ -492,9 +492,9 @@ class MSC(object):
             msg = struct.unpack("<H", pkt[6:])[0]
             self.disp.Message(self.objDict[src], self.objDict[dst], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_EVT:
-            # [HDR(2)][ModId][ObjId][Message(2)]
+            # [HDR(2)][SrcObj(2)][Message(2)]
             # Check if object needs to be added
-            src = (pkt[2] ,pkt[3])
+            src = pkt[2:4]
             self.AddObj([src])
             # Display Banner (if required)
             self.disp.Banner()
@@ -502,9 +502,9 @@ class MSC(object):
             msg = struct.unpack("<H", pkt[4:])[0]
             self.disp.Event(self.objDict[src], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_STA:
-            # [HDR(2)][ModId][ObjId][State(2)]
+            # [HDR(2)][SrcObj(2)][State(2)]
             # Check if object needs to be added
-            src = (pkt[2] ,pkt[3])
+            src = pkt[2:4]
             self.AddObj([src])
             # Display Banner (if required)
             self.disp.Banner()
@@ -512,16 +512,16 @@ class MSC(object):
             msg = struct.unpack("<H", pkt[4:])[0]
             self.disp.State(self.objDict[src], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_TP:
-            # [HDR(2)][ModId][ObjId][Value(4)]
-            src = (pkt[2] ,pkt[3])
+            # [HDR(2)][SrcObj(2)][Value(4)]
+            src = pkt[2:4]
             if src in self.objDict:
                 value = struct.unpack("<L", pkt[4:])[0]
                 self.disp.TestPt(self.objDict[src], value, color)
             else:
                 print "unknown src:", src
         elif ucOpc == MSC.HDR_TYPE_DES:
-            # [HDR(2)][ModId][ObjId]
-            src = (pkt[2] ,pkt[3])
+            # [HDR(2)][SrcObj(2)]
+            src = pkt[2:4]
             if src in self.objDict:
                 self.disp.Destroy(self.objDict[src], color)
                 self.DelObj(src)
