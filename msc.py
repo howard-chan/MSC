@@ -392,8 +392,7 @@ class MSC(object):
 
     def RegisterMsg(self, usMsgId, strMsg):
         ''' Register the msgId with message string '''
-        # Limit max length of string for formating
-        self.msgDict[usMsgId] = strMsg[0:MAX_NAME_LEN]
+        self.msgDict[usMsgId] = strMsg
 
     def RegisterMod(self, ucModId, strMod):
         ''' Register the module Id with module string '''
@@ -442,7 +441,7 @@ class MSC(object):
         if isChanged:
             objList = []
             for key in self.objList:
-               objList.append("%x:%s" % (ord(key[0]), self.modDict[ord(key[1])]))
+               objList.append("%x:%s" % (ord(key[0]), self.modDict.get(ord(key[1]), "UNK(%d)" % ord(key[1]))))
             # Set display's object list
             self.disp.SetObjList(objList)
         return isChanged
@@ -459,7 +458,7 @@ class MSC(object):
             # Set display's object list
             objList = []
             for key in self.objList:
-               objList.append("%x:%s" % (ord(key[0]), self.modDict[ord(key[1])]))
+               objList.append("%x:%s" % (ord(key[0]), self.modDict.get(ord(key[1]), "UNK(%d)" % ord(key[1]))))
             self.disp.SetObjList(objList)
 
     def Parse(self, pkt):
@@ -482,40 +481,45 @@ class MSC(object):
         ucOpc = hdr & MSC.HDR_OPC_MSK
         if ucOpc == MSC.HDR_TYPE_MSG:
             # [HDR(2)][SrcObj(2)][DstObj(2)][Message(2)]
-            # Check if object needs to be added
             src = pkt[2:4]
             dst = pkt[4:6]
+            msg = pkt[6:8]
+            # Check if object needs to be added
             self.AddObj([src, dst])
             # Display Banner (if required)
             self.disp.Banner()
             # Display Message
-            msg = struct.unpack("<H", pkt[6:])[0]
+            msg = struct.unpack("<H", msg)[0]
             self.disp.Message(self.objDict[src], self.objDict[dst], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_EVT:
             # [HDR(2)][SrcObj(2)][Message(2)]
-            # Check if object needs to be added
             src = pkt[2:4]
+            msg = pkt[4:6]
+            # Check if object needs to be added
             self.AddObj([src])
             # Display Banner (if required)
             self.disp.Banner()
             # Display Event
-            msg = struct.unpack("<H", pkt[4:])[0]
+            msg = struct.unpack("<H", msg)[0]
             self.disp.Event(self.objDict[src], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_STA:
             # [HDR(2)][SrcObj(2)][State(2)]
-            # Check if object needs to be added
             src = pkt[2:4]
+            msg = pkt[4:6]
+            # Check if object needs to be added
             self.AddObj([src])
             # Display Banner (if required)
             self.disp.Banner()
             # Display State
-            msg = struct.unpack("<H", pkt[4:])[0]
+            msg = struct.unpack("<H", msg)[0]
             self.disp.State(self.objDict[src], self.msgDict.get(msg, MSC.DEFAULT_MESSAGE % msg), color)
         elif ucOpc == MSC.HDR_TYPE_TP:
             # [HDR(2)][SrcObj(2)][Value(4)]
             src = pkt[2:4]
+            value = pkt[4:]
+            # Display Value
             if src in self.objDict:
-                value = struct.unpack("<L", pkt[4:])[0]
+                value = struct.unpack("<L", value)[0]
                 self.disp.TestPt(self.objDict[src], value, color)
             else:
                 print "unknown src:", src
