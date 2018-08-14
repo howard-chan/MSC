@@ -38,13 +38,81 @@ LEADIN = 4
 WIDTH  = 6
 
 # Colors
-MSC_COLOR_RED = ("\033[1;31m", "\033[0m")
-MSC_COLOR_GRN = ("\033[1;32m", "\033[0m")
-MSC_COLOR_YEL = ("\033[1;33m", "\033[0m")
-MSC_COLOR_BLU = ("\033[1;34m", "\033[0m")
-MSC_COLOR_MAG = ("\033[1;35m", "\033[0m")
-MSC_COLOR_CYN = ("\033[1;36m", "\033[0m")
-MSC_COLOR_NONE = ("", "")
+MSC_COLOR_NONE = 0
+MSC_COLOR_RED = 1
+MSC_COLOR_GRN = 2
+MSC_COLOR_YEL = 3
+MSC_COLOR_BLU = 4
+MSC_COLOR_MAG = 5
+MSC_COLOR_CYN = 6
+
+class DispPlantUML:
+    ''' Class providing API for displaying in https://www.plantuml.com/
+    '''
+    # These are the terminal escape codes for color
+    COLOR = [
+        "",       #MSC_COLOR_NONE
+        "[#red]", #MSC_COLOR_RED
+        "[#green]", #MSC_COLOR_GRN
+        "[#yellow]", #MSC_COLOR_YEL
+        "[#blue]", #MSC_COLOR_BLU
+        "[#magenta]", #MSC_COLOR_MAG
+        "[#cyan]", #MSC_COLOR_CYN
+    ]
+
+    def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None):
+        ''' Initialize the display
+        linesPerPage[in] - Sets the number of rows before printing a new banner
+        prefix[in] - Prefix String or callable function to generate prefix string
+        stdout[in] - Can be overwritten to a file or stdout
+        '''
+        self.stdout = stdout if stdout is not None else sys.stdout
+        self.objList = []
+        self.objCnt = len(self.objList)
+
+    def SetObjList(self, objList):
+        '''
+        '''
+        self.objList = objList
+        self.objCnt = len(self.objList)
+
+    def Banner(self, isRequired=False):
+        ''' Displays the object banner after a number of lines or when the objList changes
+        '''
+        pass
+
+    def Message(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
+        ''' Displays a message line from the src to dst object's life line
+        '''
+        self.stdout.write('"%s" -%s> "%s":%s\n' % (self.objList[srcId], DispPlantUML.COLOR[color], self.objList[dstId], msgStr))
+
+    def Event(self, objId, msgStr, color=MSC_COLOR_NONE):
+        ''' Displays a asynchronous event to an object's life line
+        '''
+        self.stdout.write('[-%s\\ "%s":%s\n' % (DispPlantUML.COLOR[color], self.objList[objId], msgStr))
+
+    def State(self, objId, stateStr, color=MSC_COLOR_NONE):
+        ''' Displays a state change in an object's life line
+        '''
+        self.stdout.write('hnote over "%s":%s\n' % (self.objList[objId], stateStr))
+
+    def Create(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
+        ''' Displays a message line from the src to created object's life line
+        '''
+        self.stdout.write('create %s\n' % (self.objList[dstId]))
+        self.stdout.write('"%s" -%s> "%s":%s\n' % (self.objList[srcId], DispPlantUML.COLOR[color], self.objList[dstId], msgStr))
+
+    def Destroy(self, objId, color=MSC_COLOR_NONE):
+        ''' Displays a destroy of an object's life line
+        '''
+        self.stdout.write('destroy "%s"\n' % self.objList[objId])
+
+    def TestPt(self, objId, msgStr, color=MSC_COLOR_NONE):
+        self.stdout.write('note over "%s":%s\n' % (self.objList[objId], msgStr))
+
+
+class DispMscgen:
+    pass
 
 class DispWeb:
     ''' Class providing API for displaying in https://www.websequencediagrams.com/
@@ -119,6 +187,17 @@ class DispTerm:
         "VAL" : " " * WIDTH     +  " +-" + "-" * WIDTH,  # B VALUE:  "   $  "
     }
 
+    # These are the terminal escape codes for color
+    COLOR = [
+        ("", ""),                  #MSC_COLOR_NONE
+        ("\033[1;31m", "\033[0m"), #MSC_COLOR_RED
+        ("\033[1;32m", "\033[0m"), #MSC_COLOR_GRN
+        ("\033[1;33m", "\033[0m"), #MSC_COLOR_YEL
+        ("\033[1;34m", "\033[0m"), #MSC_COLOR_BLU
+        ("\033[1;35m", "\033[0m"), #MSC_COLOR_MAG
+        ("\033[1;36m", "\033[0m"), #MSC_COLOR_CYN
+    ]
+
     def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None):
         ''' Initialize the display
         linesPerPage[in] - Sets the number of rows before printing a new banner
@@ -177,7 +256,7 @@ class DispTerm:
         # Step 3: Fill start with life lines
         line += DispTerm.TILES["CEN"] * start
         # Add color start
-        line += color[0]
+        line += DispTerm.COLOR[color][0]
         # Step 4: Build the message arrow
         if dist == 0:
             # Generate Self Message
@@ -197,10 +276,10 @@ class DispTerm:
                 line += DispTerm.TILES["THR"] * (dist - 1)
             line += DispTerm.TILES["LFE"]
         # Add color end
-        line += color[1]
+        line += DispTerm.COLOR[color][1]
         # Step 5: Fill end
         line += DispTerm.TILES["CEN"] * (self.objCnt - 1 - end)
-        self.stdout.write(line + " : %s%s%s\n" % (color[0], msgStr, color[1]))
+        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
 
     def Event(self, objId, msgStr, color=MSC_COLOR_NONE):
         ''' Displays a asynchronous event to an object's life line
@@ -211,13 +290,13 @@ class DispTerm:
         for idx in range(self.objCnt):
             if idx == objId:
                 # Add color start
-                line += color[0]
+                line += DispTerm.COLOR[color][0]
                 line += DispTerm.TILES["EVT"]
                 # Add color end
-                line += color[1]
+                line += DispTerm.COLOR[color][1]
             else:
                 line += DispTerm.TILES["CEN"]
-        self.stdout.write(line + " : %s%s%s\n" % (color[0], msgStr, color[1]))
+        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
 
     def State(self, objId, stateStr, color=MSC_COLOR_NONE):
         ''' Displays a state change in an object's life line
@@ -228,13 +307,13 @@ class DispTerm:
         for idx in range(self.objCnt):
             if idx == objId:
                 # Add color start
-                line += color[0]
+                line += DispTerm.COLOR[color][0]
                 line += DispTerm.TILES["STA"]
                 # Add color end
-                line += color[1]
+                line += DispTerm.COLOR[color][1]
             else:
                 line += DispTerm.TILES["CEN"]
-        self.stdout.write(line + " : %s%s%s\n" % (color[0], stateStr, color[1]))
+        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], stateStr, DispTerm.COLOR[color][1]))
 
     def Create(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
         ''' Displays a message line from the src to created object's life line
@@ -250,15 +329,15 @@ class DispTerm:
         # Step 4: Build the message arrow
         # Generate ---> message
         # Add color start
-        line += color[0]
+        line += DispTerm.COLOR[color][0]
         line += DispTerm.TILES["RTE"]
         # Add lines that are long
         if dist > 1:
             line += DispTerm.TILES["THR"] * (dist - 1)
         line += DispTerm.TILES["CR8"]
         # Add color end
-        line += color[1]
-        self.stdout.write(line + " : %s%s%s\n" % (color[0], msgStr, color[1]))
+        line += DispTerm.COLOR[color][1]
+        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
 
     def Destroy(self, objId, color=MSC_COLOR_NONE):
         ''' Displays a destroy of an object's life line
@@ -269,13 +348,13 @@ class DispTerm:
         for idx in range(self.objCnt):
             if idx == objId:
                 # Add color start
-                line += color[0]
+                line += DispTerm.COLOR[color][0]
                 line += DispTerm.TILES["DES"]
                 # Add color end
-                line += color[1]
+                line += DispTerm.COLOR[color][1]
             else:
                 line += DispTerm.TILES["CEN"]
-        self.stdout.write(line + " Destroy %s%s%s\n" % (color[0], self.objList[objId], color[1]))
+        self.stdout.write(line + " Destroy %s%s%s\n" % (DispTerm.COLOR[color][0], self.objList[objId], DispTerm.COLOR[color][1]))
 
     def TestPt(self, objId, value, color=MSC_COLOR_NONE):
         # Step 1: Print optional prefix
@@ -284,13 +363,13 @@ class DispTerm:
         line += DispTerm.TILES["CEN"] * objId
         # Step 3: Build the value note
         # Add color start
-        line += color[0]
+        line += DispTerm.COLOR[color][0]
         line += DispTerm.TILES["VAL"]
         # Add lines to the note
         line += DispTerm.TILES["THR"] * (self.objCnt - 1 - objId)
         # Add color end
-        line += color[1]
-        self.stdout.write(line + "-[ %s0x%x%s ]\n" % (color[0], value, color[1]))
+        line += DispTerm.COLOR[color][1]
+        self.stdout.write(line + "-[ %s0x%x%s ]\n" % (DispTerm.COLOR[color][0], value, DispTerm.COLOR[color][1]))
 
 
 class MSC(object):
@@ -567,10 +646,10 @@ def main():
         print binascii.hexlify(pkt)
 
     # Run through the demo using different Display types
-    for disp in [DispTerm(20, stamp), DispWeb()]:
+    for disp in [DispTerm(20, stamp), DispWeb(), DispPlantUML()]:
         # Test Display Features
-        print "----Display Test [Start]----"
-        disp.SetObjList([ "ModA", "ModB", "ModC", "ModD" ])
+        print "----Display Test (%s) [Start]----" % disp.__class__.__name__
+        disp.SetObjList([ "ModA", "ModB", "ModC", "ModD", "ModE" ])
         disp.Message(0, 1, "MsgA")
         disp.Message(1, 2, "MsgB", MSC_COLOR_BLU)
         disp.Message(2, 2, "MsgSelf", MSC_COLOR_RED)
@@ -581,13 +660,13 @@ def main():
         disp.Event(0, "Async EvtA")
         disp.Event(2, "Async EvtB")
         disp.Event(3, "Async EvtC")
+        disp.Create(2, 4, "New Obj")
         disp.State(1, "StateA", MSC_COLOR_MAG)
         disp.State(3, "StateB", MSC_COLOR_YEL)
         disp.State(2, "StateC")
         disp.TestPt(2, 0x12345678)
-        disp.Create(2, 3, "New Obj")
         disp.Destroy(1, MSC_COLOR_RED)
-        print "----Display Test [End]----\n"
+        print "----Display Test (%s) [End]----\n" % disp.__class__.__name__
 
         msc = MSC(disp)
         # Step 1: Pull the Modules from the system
@@ -604,14 +683,14 @@ def main():
         msc.RegisterMsg(5, "MsgF")
 
         # Step 3: Generate Messages and parse it
-        print "----Packet Parse Test [Start]----"
+        print "----Packet Parse Test (%s) [Start]----" % disp.__class__.__name__
         print "  No Filter"
         for pkt in pkts:
             msc.Parse(pkt)
         print "\n  Using Filter"
         for pkt in pkts:
             msc.Parse(pkt)
-        print "----Packet Parse Test [End]----\n"
+        print "----Packet Parse Test (%s) [End]----\n" % disp.__class__.__name__
 
 if __name__ == "__main__":
     main()
