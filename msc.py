@@ -29,6 +29,7 @@ SOFTWARE.
 import binascii
 import struct
 import sys
+import re
 
 # Configurable Parameters
 MAX_NAME_LEN = 10
@@ -275,7 +276,7 @@ class DispTerm:
         ("\033[1;36m", "\033[0m"), #MSC_COLOR_CYN
     ]
 
-    def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None):
+    def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None, isInline=True):
         ''' Initialize the display
         linesPerPage[in] - Sets the number of rows before printing a new banner
         prefix[in] - Prefix String or callable function to generate prefix string
@@ -284,10 +285,33 @@ class DispTerm:
         self.lines = 0
         self.linesPerPage = linesPerPage
         self.prefix = prefix
+        self.isInline = isInline
         self.stdout = stdout if stdout is not None else sys.stdout
         self.banner = ""
         self.objList = []
         self.objCnt = len(self.objList)
+        # Regex for replacing line with message text
+        self.pattLine = re.compile(r'(.*?)(--*|__*)(.*)')
+        self.TRIM = 1
+
+    def _InlineMsg(self, line, msgStr):
+        '''
+        Inserts the msgStr into the line
+        '''
+        match = self.pattLine.findall(line)
+        if match:
+            lineLen = len(match[0][1])
+            # Get Length of the message, but must fit within the line + TRIM on both sides
+            msgLen = min(len(msgStr), lineLen - 2*self.TRIM)
+            startLen = (lineLen - msgLen) / 2
+            endLen = lineLen - startLen - msgLen
+            # Get the line type (i.e. '-' or '_')
+            lineType = match[0][1][0]
+            # Build the new inline message
+            msgInline = startLen * lineType + msgStr[0:msgLen] + endLen * lineType            
+            return "%s" % (match[0][0] + msgInline + match[0][2])
+        else:
+            return line
 
     def _GetPrefix(self):
         ''' Private Function to return the prefix string
@@ -316,7 +340,7 @@ class DispTerm:
     def Banner(self, isRequired=False):
         ''' Displays the object banner after a number of lines or when the objList changes
         '''
-        # Print the banner at each page
+        # Output the banner at each page
         if (self.lines % self.linesPerPage == 0) or isRequired:
             self.stdout.write(self._GetPrefix() + self.banner + "\n")
             self.lines = 0
@@ -328,13 +352,12 @@ class DispTerm:
         # Step 1: Check the message direction and distance between srcId and dstId
         dist = dstId - srcId
         start, end = (srcId, dstId) if dist > 0 else (dstId, srcId)
-        # Step 2: Print optional prefix
-        line = self._GetPrefix()
-        # Step 3: Fill start with life lines
+        line = ""
+        # Step 2: Fill start with life lines
         line += DispTerm.TILES["CEN"] * start
         # Add color start
         line += DispTerm.COLOR[color][0]
-        # Step 4: Build the message arrow
+        # Step 3: Build the message arrow
         if dist == 0:
             # Generate Self Message
             line += DispTerm.TILES["SLF"]
@@ -354,16 +377,19 @@ class DispTerm:
             line += DispTerm.TILES["LFE"]
         # Add color end
         line += DispTerm.COLOR[color][1]
-        # Step 5: Fill end
+        # Step 4: Fill end
         line += DispTerm.TILES["CEN"] * (self.objCnt - 1 - end)
-        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
+        # Step 5: Output the string
+        if self.isInline and dist != 0:
+            self.stdout.write(self._GetPrefix() + self._InlineMsg(line, msgStr) + "\n")
+        else:
+            self.stdout.write(self._GetPrefix() + line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
 
     def Event(self, objId, msgStr, color=MSC_COLOR_NONE):
         ''' Displays a asynchronous event to an object's life line
         '''
-        # Step 1: Print optional prefix
-        line = self._GetPrefix()
-        # Step 2: Build the event symbols
+        line = ""
+        # Step 1: Build the event symbols
         for idx in range(self.objCnt):
             if idx == objId:
                 # Add color start
@@ -373,14 +399,17 @@ class DispTerm:
                 line += DispTerm.COLOR[color][1]
             else:
                 line += DispTerm.TILES["CEN"]
-        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
+        # Step 2: Output the string
+        if self.isInline:
+            self.stdout.write(self._GetPrefix() + self._InlineMsg(line, msgStr) + "\n")
+        else:
+            self.stdout.write(self._GetPrefix() + line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
 
     def State(self, objId, stateStr, color=MSC_COLOR_NONE):
         ''' Displays a state change in an object's life line
         '''
-        # Step 1: Print optional prefix
-        line = self._GetPrefix()
-        # Step 2: Build the State symbols
+        line = ""
+        # Step 1: Build the State symbols
         for idx in range(self.objCnt):
             if idx == objId:
                 # Add color start
@@ -390,7 +419,8 @@ class DispTerm:
                 line += DispTerm.COLOR[color][1]
             else:
                 line += DispTerm.TILES["CEN"]
-        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], stateStr, DispTerm.COLOR[color][1]))
+        # Step 2: Output the string
+        self.stdout.write(self._GetPrefix() + line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], stateStr, DispTerm.COLOR[color][1]))
 
     def Create(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
         ''' Displays a message line from the src to created object's life line
@@ -399,11 +429,10 @@ class DispTerm:
         # Step 1: Check the message direction and distance between srcId and dstId
         dist = dstId - srcId
         start, end = (srcId, dstId) if dist > 0 else (dstId, srcId)
-        # Step 2: Print optional prefix
-        line = self._GetPrefix()
-        # Step 3: Fill start with life lines
+        line = ""
+        # Step 2: Fill start with life lines
         line += DispTerm.TILES["CEN"] * start
-        # Step 4: Build the message arrow
+        # Step 3: Build the message arrow
         # Generate ---> message
         # Add color start
         line += DispTerm.COLOR[color][0]
@@ -414,14 +443,17 @@ class DispTerm:
         line += DispTerm.TILES["CR8"]
         # Add color end
         line += DispTerm.COLOR[color][1]
-        self.stdout.write(line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
+        # Step 4: Output the string
+        if self.isInline:
+            self.stdout.write(self._GetPrefix() + self._InlineMsg(line, msgStr) + "\n")
+        else:
+            self.stdout.write(self._GetPrefix() + line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], msgStr, DispTerm.COLOR[color][1]))
 
     def Destroy(self, objId, color=MSC_COLOR_NONE):
         ''' Displays a destroy of an object's life line
         '''
-        # Step 1: Print optional prefix
-        line = self._GetPrefix()
-        # Step 2: Build the Destroy symbols
+        line = ""
+        # Step 1: Build the Destroy symbols
         for idx in range(self.objCnt):
             if idx == objId:
                 # Add color start
@@ -431,14 +463,14 @@ class DispTerm:
                 line += DispTerm.COLOR[color][1]
             else:
                 line += DispTerm.TILES["CEN"]
-        self.stdout.write(line + " Destroy %s%s%s\n" % (DispTerm.COLOR[color][0], self.objList[objId], DispTerm.COLOR[color][1]))
+        # Step 2: Output the string
+        self.stdout.write(self._GetPrefix() + line + " Destroy %s%s%s\n" % (DispTerm.COLOR[color][0], self.objList[objId], DispTerm.COLOR[color][1]))
 
     def TestPt(self, objId, value, color=MSC_COLOR_NONE):
-        # Step 1: Print optional prefix
-        line = self._GetPrefix()
-        # Step 2: Fill start with life lines
+        line = ""
+        # Step 1: Fill start with life lines
         line += DispTerm.TILES["CEN"] * objId
-        # Step 3: Build the value note
+        # Step 2: Build the value note
         # Add color start
         line += DispTerm.COLOR[color][0]
         line += DispTerm.TILES["VAL"]
@@ -446,7 +478,8 @@ class DispTerm:
         line += DispTerm.TILES["THR"] * (self.objCnt - 1 - objId)
         # Add color end
         line += DispTerm.COLOR[color][1]
-        self.stdout.write(line + "-[ %s0x%x%s ]\n" % (DispTerm.COLOR[color][0], value, DispTerm.COLOR[color][1]))
+        # Step 3: Output the string
+        self.stdout.write(self._GetPrefix() + line + "-[ %s0x%x%s ]\n" % (DispTerm.COLOR[color][0], value, DispTerm.COLOR[color][1]))
 
 
 class MSC(object):
