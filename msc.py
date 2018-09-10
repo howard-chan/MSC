@@ -45,24 +45,26 @@ MSC_COLOR_YEL = 3
 MSC_COLOR_BLU = 4
 MSC_COLOR_MAG = 5
 MSC_COLOR_CYN = 6
+MSC_COLOR_WHT = 7
+
 
 class DispPlantUML:
     ''' Class providing API for displaying in https://www.plantuml.com/
     '''
     # These are the terminal escape codes for color
     COLOR = [
-        "",       #MSC_COLOR_NONE
-        "[#red]", #MSC_COLOR_RED
-        "[#green]", #MSC_COLOR_GRN
-        "[#yellow]", #MSC_COLOR_YEL
-        "[#blue]", #MSC_COLOR_BLU
+        "",           #MSC_COLOR_NONE
+        "[#red]",     #MSC_COLOR_RED
+        "[#green]",   #MSC_COLOR_GRN
+        "[#yellow]",  #MSC_COLOR_YEL
+        "[#blue]",    #MSC_COLOR_BLU
         "[#magenta]", #MSC_COLOR_MAG
-        "[#cyan]", #MSC_COLOR_CYN
+        "[#cyan]",    #MSC_COLOR_CYN
     ]
 
     def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None):
         ''' Initialize the display
-        linesPerPage[in] - Sets the number of rows before printing a new banner
+        linesPerPage[in] - Sets the number of rows before print(ng a new banner)
         prefix[in] - Prefix String or callable function to generate prefix string
         stdout[in] - Can be overwritten to a file or stdout
         '''
@@ -112,7 +114,82 @@ class DispPlantUML:
 
 
 class DispMscgen:
-    pass
+    ''' Class providing API for displaying in https://www.plantuml.com/
+    '''
+    # These are the terminal escape codes for color
+    COLOR = [
+        "#000000",    #MSC_COLOR_NONE
+        "#ff0000",    #MSC_COLOR_RED
+        "#00ff00",    #MSC_COLOR_GRN
+        "#ffff00",    #MSC_COLOR_YEL
+        "#0000ff",    #MSC_COLOR_BLU
+        "#ff00ff",    #MSC_COLOR_MAG
+        "#00ffff",    #MSC_COLOR_CYN
+        "#ffffff",    #MSC_COLOR_WHT
+    ]
+    ASYNC = "Async"
+
+    def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None):
+        ''' Initialize the display
+        linesPerPage[in] - Sets the number of rows before print(ng a new banner)
+        prefix[in] - Prefix String or callable function to generate prefix string
+        stdout[in] - Can be overwritten to a file or stdout
+        '''
+        self.lines = 0
+        self.linesPerPage = linesPerPage
+        self.stdout = stdout if stdout is not None else sys.stdout
+        self.objList = []
+        self.objCnt = len(self.objList)
+
+    def SetObjList(self, objList):
+        '''
+        '''
+        self.objList = objList
+        self.objCnt = len(self.objList)
+
+    def Banner(self, isRequired=False):
+        ''' Displays the object banner after a number of lines or when the objList changes
+        '''
+        if (self.lines % self.linesPerPage == 0) or isRequired:
+            #NOTE: There is no real async event support for mscgen, so add an async event proxy
+            banner = '"%s"' % self.ASYNC
+            # Add objects as listed
+            for obj in self.objList:
+                banner += ', "%s"' % obj
+            self.stdout.write(banner + ";\n")
+            self.lines = 0
+        self.lines += 1
+
+    def Message(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
+        ''' Displays a message line from the src to dst object's life line
+        '''
+        self.stdout.write('"%s"=>>"%s" [label="%s", linecolor="%s"];\n' % (self.objList[srcId], self.objList[dstId], msgStr, self.COLOR[color]))
+
+    def Event(self, objId, msgStr, color=MSC_COLOR_NONE):
+        ''' Displays a asynchronous event to an object's life line
+        '''
+        self.stdout.write('"Async"->"%s" [label="%s", linecolor="%s"];\n' % (self.objList[objId], msgStr, self.COLOR[color]))
+
+    def State(self, objId, stateStr, color=MSC_COLOR_NONE):
+        ''' Displays a state change in an object's life line
+        '''
+        color = color if (color != MSC_COLOR_NONE) else MSC_COLOR_WHT
+        self.stdout.write('"%s" rbox "%s" [label="%s", textbgcolor="%s"];\n' % (self.objList[objId], self.objList[objId], stateStr, self.COLOR[color]))
+
+    def Create(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
+        ''' Displays a message line from the src to created object's life line
+        '''
+        pass
+
+    def Destroy(self, objId, color=MSC_COLOR_NONE):
+        ''' Displays a destroy of an object's life line
+        '''
+        pass
+
+    def TestPt(self, objId, msgStr, color=MSC_COLOR_NONE):
+        color = color if (color != MSC_COLOR_NONE) else MSC_COLOR_WHT
+        self.stdout.write('"%s" note "%s" [label="%s", textbgcolor="%s"];\n' % (self.objList[objId], self.objList[objId], msgStr, self.COLOR[color]))
+
 
 class DispWeb:
     ''' Class providing API for displaying in https://www.websequencediagrams.com/
@@ -503,7 +580,7 @@ class MSC(object):
         elif ucOpc == MSC.HDR_TYPE_DES:
             body = struct.pack("<BB", srcId, srcMod)
         # Step 3: Build Packet
-        pkt = chr(hdr) + chr(len(body)) + body
+        pkt = chr(hdr) + chr(len(body)) + str(body)
         # print binascii.hexlify(pkt)
         return pkt
 
@@ -601,7 +678,7 @@ class MSC(object):
                 value = struct.unpack("<L", value)[0]
                 self.disp.TestPt(self.objDict[src], value, color)
             else:
-                print "unknown src:", src
+                print("unknown src:", src)
         elif ucOpc == MSC.HDR_TYPE_DES:
             # [HDR(2)][SrcObj(2)]
             src = pkt[2:4]
@@ -611,7 +688,7 @@ class MSC(object):
                 # Display Banner (if required)
                 self.disp.Banner()
             else:
-                print "unknown src:", src
+                print("unknown src:", src)
 
 
 import datetime
@@ -625,8 +702,8 @@ def main():
         DispTerm is designed for a live capture and post analysis
         DispWeb uses https://www.websequencediagrams.com/ which is for post analysis
     '''
-    print "======== MSC Demo ========"
-    print "Generate Raw Data"
+    print("======== MSC Demo ========")
+    print("Generate Raw Data")
     msc = MSC(DispTerm())
     pkts = []
     pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_MSG, 0, 2, 8, 1, 10))
@@ -643,12 +720,12 @@ def main():
     pkts.append(msc.BuildPkt(MSC.HDR_PRI_ALT, MSC.HDR_TYPE_EVT, 3, 2, 8))
     pkts.append(msc.BuildPkt(0,               MSC.HDR_TYPE_EVT, 0xDEAD, 2, 8))
     for pkt in pkts:
-        print binascii.hexlify(pkt)
+        print(binascii.hexlify(pkt))
 
     # Run through the demo using different Display types
-    for disp in [DispTerm(20, stamp), DispWeb(), DispPlantUML()]:
+    for disp in [DispTerm(20, stamp), DispWeb(), DispMscgen(), DispPlantUML()]:
         # Test Display Features
-        print "----Display Test (%s) [Start]----" % disp.__class__.__name__
+        print("----Display Test (%s) [Start]----" % disp.__class__.__name__)
         disp.SetObjList([ "ModA", "ModB", "ModC", "ModD", "ModE" ])
         disp.Message(0, 1, "MsgA")
         disp.Message(1, 2, "MsgB", MSC_COLOR_BLU)
@@ -666,7 +743,7 @@ def main():
         disp.State(2, "StateC")
         disp.TestPt(2, 0x12345678)
         disp.Destroy(1, MSC_COLOR_RED)
-        print "----Display Test (%s) [End]----\n" % disp.__class__.__name__
+        print("----Display Test (%s) [End]----\n" % disp.__class__.__name__)
 
         msc = MSC(disp)
         # Step 1: Pull the Modules from the system
@@ -683,14 +760,14 @@ def main():
         msc.RegisterMsg(5, "MsgF")
 
         # Step 3: Generate Messages and parse it
-        print "----Packet Parse Test (%s) [Start]----" % disp.__class__.__name__
-        print "  No Filter"
+        print("----Packet Parse Test (%s) [Start]----" % disp.__class__.__name__)
+        print("  No Filter")
         for pkt in pkts:
             msc.Parse(pkt)
-        print "\n  Using Filter"
+        print("\n  Using Filter")
         for pkt in pkts:
             msc.Parse(pkt)
-        print "----Packet Parse Test (%s) [End]----\n" % disp.__class__.__name__
+        print("----Packet Parse Test (%s) [End]----\n" % disp.__class__.__name__)
 
 if __name__ == "__main__":
     main()
