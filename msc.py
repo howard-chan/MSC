@@ -2,7 +2,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2016 Howard Chan
+Copyright (c) 2016-2018 Howard Chan
 https://github.com/howard-chan/MSC
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,10 +33,9 @@ import re
 
 # Configurable Parameters
 MAX_NAME_LEN = 10
-MIN_SPACING = 2
+MIN_WIDTH  = 12
+MAX_WIDTH  = 50
 LINES_PER_PAGE = 10
-LEADIN = 4
-WIDTH  = 6
 
 # Colors
 MSC_COLOR_NONE = 0
@@ -49,7 +48,19 @@ MSC_COLOR_CYN = 6
 MSC_COLOR_WHT = 7
 
 
-class DispPlantUML:
+class Disp:
+    ''' Default Display Class for uncommon functions
+    '''
+    def SetMaxStrMsgLen(self, width):
+        pass
+
+    def Banner(self, isRequired=False):
+        ''' Displays the object banner after a number of lines or when the objList changes
+        '''
+        pass
+
+
+class DispPlantUML(Disp):
     ''' Class providing API for displaying in https://www.plantuml.com/
     '''
     # These are the terminal escape codes for color
@@ -78,11 +89,6 @@ class DispPlantUML:
         '''
         self.objList = objList
         self.objCnt = len(self.objList)
-
-    def Banner(self, isRequired=False):
-        ''' Displays the object banner after a number of lines or when the objList changes
-        '''
-        pass
 
     def Message(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
         ''' Displays a message line from the src to dst object's life line
@@ -114,7 +120,7 @@ class DispPlantUML:
         self.stdout.write('note over "%s":%s\n' % (self.objList[objId], msgStr))
 
 
-class DispMscgen:
+class DispMscgen(Disp):
     ''' Class providing API for displaying in https://www.plantuml.com/
     '''
     # These are the terminal escape codes for color
@@ -192,7 +198,7 @@ class DispMscgen:
         self.stdout.write('"%s" note "%s" [label="%s", textbgcolor="%s"];\n' % (self.objList[objId], self.objList[objId], msgStr, self.COLOR[color]))
 
 
-class DispWeb:
+class DispWeb(Disp):
     ''' Class providing API for displaying in https://www.websequencediagrams.com/
     '''
     def __init__(self, linesPerPage=LINES_PER_PAGE, prefix="", stdout=None):
@@ -210,11 +216,6 @@ class DispWeb:
         '''
         self.objList = objList
         self.objCnt = len(self.objList)
-
-    def Banner(self, isRequired=False):
-        ''' Displays the object banner after a number of lines or when the objList changes
-        '''
-        pass
 
     def Message(self, srcId, dstId, msgStr, color=MSC_COLOR_NONE):
         ''' Displays a message line from the src to dst object's life line
@@ -245,26 +246,9 @@ class DispWeb:
         self.stdout.write('note over "%s":%s\n' % (self.objList[objId], msgStr))
 
 
-class DispTerm:
+class DispTerm(Disp):
     ''' Class providing API for displaying ASCII formatted MSC symbols to stdout
     '''
-    # These are the display tiles used to draw the MSC graphic symbols
-    # The WIDTH can be configured and controls the center spacing
-    TILES = {
-        "CEN" : " " * WIDTH     +  " | " + " " * WIDTH,  # 0 CENTER: "   |   "
-        "LFA" : " " * WIDTH     +  " |<" + "-" * WIDTH,  # 1 LF ARR: "   |<--"
-        "LFE" : "-" * WIDTH     +  "-| " + " " * WIDTH,  # 2 LF END  "---|   "
-        "RTA" : "-" * WIDTH     +  ">| " + " " * WIDTH,  # 3 RT ARR: "-->|   "
-        "RTE" : " " * WIDTH     +  " |-" + "-" * WIDTH,  # 4 RT END: "   |---"
-        "THR" : "-" * WIDTH     +  "---" + "-" * WIDTH,  # 5 THRU:   "-------"
-        "SLF" : " " * WIDTH     +  " |}" + " " * WIDTH,  # 6 SELF    "   |}  "
-        "STA" : " " * WIDTH     +  "[S]" + " " * WIDTH,  # 7 STATE:  "  [S]  "
-        "EVT" : "_" * WIDTH     +  "\| " + " " * WIDTH,  # 8 ASYNC:  "__\|   "
-        "CR8" : "-" * (WIDTH-1) + ">[C]" + " " * WIDTH,  # 9 CREATE: "->[C]  "
-        "DES" : " " * WIDTH     +  " X " + " " * WIDTH,  # A DESTROY:"   X   "
-        "VAL" : " " * WIDTH     +  " +-" + "-" * WIDTH,  # B VALUE:  "   $  "
-    }
-
     # These are the terminal escape codes for color
     COLOR = [
         ("", ""),                  #MSC_COLOR_NONE
@@ -293,6 +277,8 @@ class DispTerm:
         # Regex for replacing line with message text
         self.pattLine = re.compile(r'(.*?)(--*|__*)(.*)')
         self.TRIM = 1
+        # Generate TILE
+        self.SetMaxStrMsgLen()
 
     def _InlineMsg(self, line, msgStr):
         '''
@@ -329,13 +315,35 @@ class DispTerm:
         '''
         self.objList = objList
         self.objCnt = len(self.objList)
-        width = len(DispTerm.TILES["CEN"])
+        width = len(self.TILES["CEN"])
         # Step 1: Generate the object banner
         self.banner = ""
         for obj in objList:
             self.banner += ("[" + obj + "]").center(width)
         # Step 2: Print the banner to reflect changes
         self.Banner(True)
+
+    def SetMaxStrMsgLen(self, width=MIN_WIDTH):
+        ''' Sets the TILE size based on the maximum string length
+        '''
+        width = max(width, MIN_WIDTH) if self.isInline else MIN_WIDTH
+        width = min(width, MAX_WIDTH) / 2 + 1
+        # These are the display tiles used to draw the MSC graphic symbols
+        # The width can be configured and controls the center spacing
+        self.TILES = {
+            "CEN" : " " * width     +  " | " + " " * width,  # 0 CENTER: "   |   "
+            "LFA" : " " * width     +  " |<" + "-" * width,  # 1 LF ARR: "   |<--"
+            "LFE" : "-" * width     +  "-| " + " " * width,  # 2 LF END  "---|   "
+            "RTA" : "-" * width     +  ">| " + " " * width,  # 3 RT ARR: "-->|   "
+            "RTE" : " " * width     +  " |-" + "-" * width,  # 4 RT END: "   |---"
+            "THR" : "-" * width     +  "---" + "-" * width,  # 5 THRU:   "-------"
+            "SLF" : " " * width     +  " |}" + " " * width,  # 6 SELF    "   |}  "
+            "STA" : " " * width     +  "[S]" + " " * width,  # 7 STATE:  "  [S]  "
+            "EVT" : "_" * width     +  "\| " + " " * width,  # 8 ASYNC:  "__\|   "
+            "CR8" : "-" * (width-1) + ">[C]" + " " * width,  # 9 CREATE: "->[C]  "
+            "DES" : " " * width     +  " X " + " " * width,  # A DESTROY:"   X   "
+            "VAL" : " " * width     +  " +-" + "-" * width,  # B VALUE:  "   $  "
+        }
 
     def Banner(self, isRequired=False):
         ''' Displays the object banner after a number of lines or when the objList changes
@@ -354,31 +362,31 @@ class DispTerm:
         start, end = (srcId, dstId) if dist > 0 else (dstId, srcId)
         line = ""
         # Step 2: Fill start with life lines
-        line += DispTerm.TILES["CEN"] * start
+        line += self.TILES["CEN"] * start
         # Add color start
         line += DispTerm.COLOR[color][0]
         # Step 3: Build the message arrow
         if dist == 0:
             # Generate Self Message
-            line += DispTerm.TILES["SLF"]
+            line += self.TILES["SLF"]
         elif dist > 0:
             # Generate ---> message
-            line += DispTerm.TILES["RTE"]
+            line += self.TILES["RTE"]
             # Add lines that are long
             if dist > 1:
-                line += DispTerm.TILES["THR"] * (dist - 1)
-            line += DispTerm.TILES["RTA"]
+                line += self.TILES["THR"] * (dist - 1)
+            line += self.TILES["RTA"]
         else:
             # Generate <--- message
             dist = -dist
-            line += DispTerm.TILES["LFA"]
+            line += self.TILES["LFA"]
             if dist > 1:
-                line += DispTerm.TILES["THR"] * (dist - 1)
-            line += DispTerm.TILES["LFE"]
+                line += self.TILES["THR"] * (dist - 1)
+            line += self.TILES["LFE"]
         # Add color end
         line += DispTerm.COLOR[color][1]
         # Step 4: Fill end
-        line += DispTerm.TILES["CEN"] * (self.objCnt - 1 - end)
+        line += self.TILES["CEN"] * (self.objCnt - 1 - end)
         # Step 5: Output the string
         if self.isInline and dist != 0:
             self.stdout.write(self._GetPrefix() + self._InlineMsg(line, msgStr) + "\n")
@@ -394,11 +402,11 @@ class DispTerm:
             if idx == objId:
                 # Add color start
                 line += DispTerm.COLOR[color][0]
-                line += DispTerm.TILES["EVT"]
+                line += self.TILES["EVT"]
                 # Add color end
                 line += DispTerm.COLOR[color][1]
             else:
-                line += DispTerm.TILES["CEN"]
+                line += self.TILES["CEN"]
         # Step 2: Output the string
         if self.isInline:
             self.stdout.write(self._GetPrefix() + self._InlineMsg(line, msgStr) + "\n")
@@ -414,11 +422,11 @@ class DispTerm:
             if idx == objId:
                 # Add color start
                 line += DispTerm.COLOR[color][0]
-                line += DispTerm.TILES["STA"]
+                line += self.TILES["STA"]
                 # Add color end
                 line += DispTerm.COLOR[color][1]
             else:
-                line += DispTerm.TILES["CEN"]
+                line += self.TILES["CEN"]
         # Step 2: Output the string
         self.stdout.write(self._GetPrefix() + line + " : %s%s%s\n" % (DispTerm.COLOR[color][0], stateStr, DispTerm.COLOR[color][1]))
 
@@ -431,16 +439,16 @@ class DispTerm:
         start, end = (srcId, dstId) if dist > 0 else (dstId, srcId)
         line = ""
         # Step 2: Fill start with life lines
-        line += DispTerm.TILES["CEN"] * start
+        line += self.TILES["CEN"] * start
         # Step 3: Build the message arrow
         # Generate ---> message
         # Add color start
         line += DispTerm.COLOR[color][0]
-        line += DispTerm.TILES["RTE"]
+        line += self.TILES["RTE"]
         # Add lines that are long
         if dist > 1:
-            line += DispTerm.TILES["THR"] * (dist - 1)
-        line += DispTerm.TILES["CR8"]
+            line += self.TILES["THR"] * (dist - 1)
+        line += self.TILES["CR8"]
         # Add color end
         line += DispTerm.COLOR[color][1]
         # Step 4: Output the string
@@ -458,24 +466,24 @@ class DispTerm:
             if idx == objId:
                 # Add color start
                 line += DispTerm.COLOR[color][0]
-                line += DispTerm.TILES["DES"]
+                line += self.TILES["DES"]
                 # Add color end
                 line += DispTerm.COLOR[color][1]
             else:
-                line += DispTerm.TILES["CEN"]
+                line += self.TILES["CEN"]
         # Step 2: Output the string
         self.stdout.write(self._GetPrefix() + line + " Destroy %s%s%s\n" % (DispTerm.COLOR[color][0], self.objList[objId], DispTerm.COLOR[color][1]))
 
     def TestPt(self, objId, value, color=MSC_COLOR_NONE):
         line = ""
         # Step 1: Fill start with life lines
-        line += DispTerm.TILES["CEN"] * objId
+        line += self.TILES["CEN"] * objId
         # Step 2: Build the value note
         # Add color start
         line += DispTerm.COLOR[color][0]
-        line += DispTerm.TILES["VAL"]
+        line += self.TILES["VAL"]
         # Add lines to the note
-        line += DispTerm.TILES["THR"] * (self.objCnt - 1 - objId)
+        line += self.TILES["THR"] * (self.objCnt - 1 - objId)
         # Add color end
         line += DispTerm.COLOR[color][1]
         # Step 3: Output the string
@@ -578,10 +586,15 @@ class MSC(object):
         self.objDict = {}
         self.objList = []
         self.filterList = []
+        self.maxStrMsgLen = 0
 
     def RegisterMsg(self, usMsgId, strMsg):
         ''' Register the msgId with message string '''
         self.msgDict[usMsgId] = strMsg
+        strMsgLen = len(strMsg)
+        if (strMsgLen > self.maxStrMsgLen):
+            self.maxStrMsgLen = strMsgLen
+            self.disp.SetMaxStrMsgLen(self.maxStrMsgLen)
 
     def RegisterMod(self, ucModId, strMod):
         ''' Register the module Id with module string '''
@@ -786,7 +799,7 @@ def main():
 
         # Step 2: Pull the messages from the system
         msc.RegisterMsg(0, "MsgA")
-        msc.RegisterMsg(1, "MsgB")
+        msc.RegisterMsg(1, "MsgB_is_a_long_message")
         msc.RegisterMsg(2, "MsgC")
         msc.RegisterMsg(3, "MsgD")
         msc.RegisterMsg(4, "MsgE")
